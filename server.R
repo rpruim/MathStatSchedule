@@ -205,37 +205,27 @@ shinyServer(function(input, output, session) {
    
    output$fac_details <- 
      renderDataTable({
+       if (is.null(input$fac_click)) {
+         the_sched() %>% filter(FALSE)
+       } else {
          the_sched() %>%
            filter(Faculty == input$fac_click$panelvar1) %>% 
            select(Faculty, Term, SubjectCode, CourseNum, MeetingDays, MeetingStart, MeetingEnd, 
                   Room, FacultyLoad) 
+       }
      })
    
-   comparison_data <- 
-     reactive({
-       compData <- 
+   output$comparison_data <- 
+     renderDataTable({
+       DT::datatable(
          bind_rows(
            the_sched() %>% select(-Notes) %>% 
              anti_join(the_sched2() %>% select(-Notes)) %>% mutate(Schedule = "Primary"),
            the_sched2() %>% select(-Notes) %>% 
              anti_join(the_sched() %>% select(-Notes)) %>% mutate(Schedule = "Secondary")
-         ) 
-       if (input$full_comparison) {
-         compData %>%
+         ) %>%
            select(Schedule, Term, SubjectCode, CourseNum, MeetingDays, MeetingStart, MeetingEnd, 
-                  Room, Faculty, FacultyLoad, InstrMethod)
-       } else {
-         compData %>%
-           group_by(SubjectCode, CourseNum) %>%
-           mutate(Sections = n()) %>%
-           select(Schedule, Term, SubjectCode, CourseNum, Sections, FacultyLoad, InstrMethod) %>%
-           unique()
-       }
-     })
-   
-     output$comparison_data <- renderDataTable({ 
-       DT::datatable(
-         comparison_data(),
+                  Room, Faculty, FacultyLoad, InstrMethod),
          options = list(rowCallback = JS(
            'function(row, data) {
               if (data[1] == "Primary")
