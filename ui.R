@@ -1,5 +1,6 @@
 library(shiny)
 library(shinythemes)
+library(DT)
 
 shinyUI(
   fluidPage(
@@ -27,6 +28,7 @@ shinyUI(
       ),
       tabPanel(
         "Loads", 
+        checkboxInput("by_term", "Separate by term", value = FALSE),
         dataTableOutput("loads")
       ),
       tabPanel(
@@ -46,7 +48,7 @@ shinyUI(
         "Compare Schedules", 
         fluidRow(
           column(3, uiOutput("year2UI")),
-          column(3, br(), br(), checkboxInput("full_comparison", "Show more details", value = FALSE))
+          column(3, uiOutput("columnsUI"))
         ),
         dataTableOutput("comparison_data")
       )

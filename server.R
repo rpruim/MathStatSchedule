@@ -6,6 +6,12 @@ library(tidyr)
 library(ggplot2)
 library(lubridate)
 
+options(DT.options = 
+          list(pageLength = 25, pagemenu = c(25, 50, 100, 200), 
+               filter = list(position = 'top', clear = FALSE)
+               )
+        ) 
+
 shinyServer(function(input, output, session) {
   
 #   observeEvent(
@@ -25,6 +31,11 @@ shinyServer(function(input, output, session) {
     foo = rnorm(1) 
  )
   
+ query <- reactive( 
+   parseQueryString(session$clientData$url_search) 
+ )
+  
+  
   year1 <- reactive({ as.character(input$year1)[1] })
   year2 <- reactive({ as.character(input$year2)[1] })
   
@@ -34,7 +45,19 @@ shinyServer(function(input, output, session) {
       paste("Last Modification of loaded spreadsheet: ", gs_gs(rv$SS)$updated)
     )
   
+  room_cap <-
+    eventReactive( 
+      {input$refresh; rv$SS},
+      {
+        room_info <- gs_read(rv$SS, "Rooms")
+        x <- room_info$Capacity
+        names(x) <- room_info$Room
+        x
+      }
+    )
+  
   output$message <- renderText( the_message() )
+  # output$message <- renderText({ query()[["admin"]] })
  
   observeEvent( 
     {input$refresh; rv$foo}, 
@@ -45,20 +68,46 @@ shinyServer(function(input, output, session) {
     eventReactive({input$refresh; year1()}, 
                   gs_read(rv$SS, year1()) %>%
                     mutate(
+                      ClassMax = ifelse(is.na(ClassMax), room_cap()[Room], ClassMax),
                       MeetingDays = sub("TH", "R", MeetingDays),
                       Term = gsub("\\d", "", Term),
                       Term = gsub("/", "", Term)
-                    ),
+                    ) %>%
+                    group_by(Term, SubjectCode, CourseNum) %>%
+                    arrange(char2Time(MeetingStart)) %>%
+                    mutate(
+                      Section = 
+                        ifelse(
+                          is.na(Section),
+                          setdiff(LETTERS, Section)[rank(Section, na.last = FALSE)],
+                          Section
+                        )
+                    ) %>% 
+                    ungroup() %>%
+                    arrange(Term, SubjectCode, CourseNum, Section),
                   ignoreNULL = FALSE)
   
   the_sched2 <- 
     eventReactive({input$refresh; year2()}, 
                   gs_read(rv$SS, year2()) %>%
                     mutate(
+                      ClassMax = ifelse(is.na(ClassMax), room_cap()[Room], ClassMax),
                       MeetingDays = sub("TH", "R", MeetingDays),
                       Term = gsub("\\d", "", Term),
                       Term = gsub("/", "", Term)
-                    ),
+                    ) %>%
+                    group_by(Term, SubjectCode, CourseNum) %>%
+                    arrange(char2Time(MeetingStart)) %>%
+                    mutate(
+                      Section = 
+                        ifelse(
+                          is.na(Section),
+                          setdiff(LETTERS, Section)[rank(Section, na.last = FALSE)],
+                          Section
+                        )
+                    ) %>% 
+                    ungroup() %>%
+                    arrange(Term, SubjectCode, CourseNum, Section),
                   ignoreNULL = FALSE)
   
   the_sched_by_day <-
@@ -88,21 +137,32 @@ shinyServer(function(input, output, session) {
   the_data <- reactive({merge(the_sched(), the_fac(), all.x = TRUE, all.y = FALSE)})
   
   fac_loads <- reactive({
-    the_sched() %>% 
+    sked <- 
+      the_sched() %>% 
       merge(the_duties(), all.x = TRUE, all.y = FALSE, by = "InstrMethod") %>%
-      group_by(Faculty, Teaching) %>%
-      summarise(Load = sum(FacultyLoad, na.rm=TRUE)) %>%
-      ungroup() %>%
-      spread(Teaching, Load) %>%
+      mutate(Teaching = ifelse(is.na(Teaching), "Other", Teaching)) %>%
+      group_by(Faculty, Teaching)
+    if (input$by_term) 
+      sked <- sked %>% group_by(Term, add = TRUE)
+    sked <- 
+      sked %>% 
+      summarise(Load = sum(FacultyLoad, na.rm = TRUE)) %>%
+      ungroup() 
+    sked <- 
+      sked %>%
+      spread(Teaching, Load) 
+    sked <- 
+      sked %>%
       mutate(Total = ifelse(is.na(Teaching), 0, Teaching) + 
                      ifelse(is.na(`Non-Teaching`), 0, `Non-Teaching`))
+    sked
   })
   
   output$loads <-
     renderDataTable( fac_loads() )
   
   output$schedule <- 
-    renderDataTable( the_sched() )
+    renderDataTable( DT::datatable(the_sched(), filter = list(position = "top")) )
       # %>%  select_(.dots = intersect(names(the_data()), viewCols)))
   
   output$downloadSchedule <-
@@ -137,9 +197,15 @@ shinyServer(function(input, output, session) {
           selectInput(
             "year2", "Secondary Schedule", 
             choices = 
-              setdiff(
-                grep("^\\d\\d\\d\\d-\\d\\d", gs_ws_ls(rv$SS), value = TRUE),
-                year1()
+              ifelse(!is.null(query()[["admin"]]) && query()[["admin"]] == "rpruim",
+                     setdiff(
+                       grep("\\d\\d\\d\\d-\\d\\d", gs_ws_ls(rv$SS), value = TRUE),
+                       year1()
+                     ),
+                     setdiff(
+                       grep("^\\d\\d\\d\\d-\\d\\d", gs_ws_ls(rv$SS), value = TRUE),
+                       year1()
+                     )
               )
           )
         )
@@ -159,12 +225,13 @@ shinyServer(function(input, output, session) {
              ),
          alpha = 0.5
        ) +
-       facet_grid( Term ~ Room)
+       facet_grid( Term ~ Room) +
+       labs(y = "Time")
    })
  
  output$fac_plot <- 
    renderPlot({
-     ggplot(the_sched_by_day()) + 
+     ggplot(the_sched_by_day()) + #  %>% mutate(Fac = paste0(Last, ", ", substr(First, 1, 1)))) + 
        geom_point(aes(x = Day, y = startTime), colour = "transparent") +
        geom_rect(
          aes(xmin = nDayLo,
@@ -175,7 +242,8 @@ shinyServer(function(input, output, session) {
          ),
          alpha = 0.5
        ) +
-       facet_grid(Term ~ Faculty)
+       facet_grid(Term ~ Faculty) +
+       labs(y = "Time")
    })
  
 
@@ -190,13 +258,13 @@ shinyServer(function(input, output, session) {
            Room == input$room_brush$panelvar1,
            Term == input$room_brush$panelvar2
          ) %>% 
-           select(Term, SubjectCode, CourseNum, MeetingDays, MeetingStart, MeetingEnd, 
-                  Room, Faculty, FacultyLoad) %>%
+           select(Term, SubjectCode, CourseNum, Section, MeetingDays, MeetingStart, MeetingEnd, 
+                  Room, ClassMax, Faculty, FacultyLoad) %>%
            unique()
        } else {
          the_sched() %>% 
-           select(Term, SubjectCode, CourseNum, MeetingDays, MeetingStart, MeetingEnd, 
-                  Room, Faculty, FacultyLoad) %>% 
+           select(Term, SubjectCode, CourseNum, Section, MeetingDays, MeetingStart, MeetingEnd, 
+                  Room, ClassMax, Faculty, FacultyLoad) %>% 
            filter(FALSE)
        }
        # brushedPoints(the_sched_by_day(), input$room_brush) 
@@ -210,22 +278,45 @@ shinyServer(function(input, output, session) {
        } else {
          the_sched() %>%
            filter(Faculty == input$fac_click$panelvar1) %>% 
-           select(Faculty, Term, SubjectCode, CourseNum, MeetingDays, MeetingStart, MeetingEnd, 
-                  Room, FacultyLoad) 
+           select(Faculty, Term, SubjectCode, CourseNum, Section, MeetingDays, MeetingStart, MeetingEnd, 
+                  Room, ClassMax, FacultyLoad) 
        }
+     })
+   
+   output$columnsUI <- 
+     renderUI({
+       checkboxGroupInput(
+         "comp_columns", "include", 
+         choices = 
+           c("Term", "SubjectCode", "CourseNum", "MeetingDays", 
+                     "MeetingStart", "MeetingEnd", "Room", "ClassMax", "Faculty", 
+                     "FacultyLoad", "InstrMethod"),
+          selected = 
+           c("Term", "SubjectCode", "CourseNum", 
+             # "MeetingDays",  "MeetingStart", "MeetingEnd", "Room", "ClassMax", "Faculty", 
+               "FacultyLoad", "InstrMethod")
+       )                        
      })
    
    output$comparison_data <- 
      renderDataTable({
        DT::datatable(
+         filter = list(position = "top"),
          bind_rows(
-           the_sched() %>% select(-Notes) %>% 
-             anti_join(the_sched2() %>% select(-Notes)) %>% mutate(Schedule = "Primary"),
-           the_sched2() %>% select(-Notes) %>% 
-             anti_join(the_sched() %>% select(-Notes)) %>% mutate(Schedule = "Secondary")
-         ) %>%
-           select(Schedule, Term, SubjectCode, CourseNum, MeetingDays, MeetingStart, MeetingEnd, 
-                  Room, Faculty, FacultyLoad, InstrMethod),
+           the_sched() %>% 
+             select_(.dots = intersect(names(the_sched()), input$comp_columns)) %>% 
+             anti_join(the_sched2() %>% 
+                         select_(.dots = intersect(names(the_sched2()), input$comp_columns))) %>% 
+             mutate(Schedule = "Primary"),
+           the_sched2() %>% 
+             select_(.dots = intersect(names(the_sched2()), input$comp_columns)) %>% 
+             anti_join(the_sched() %>% 
+                         select_(.dots = intersect(names(the_sched()), input$comp_columns))) %>% 
+             mutate(Schedule = "Secondary") 
+             ) %>%
+           select_(.dots = c("Schedule", intersect(names(the_sched()), input$comp_columns))) %>%
+           group_by_(.dots = names(.)) %>%
+           summarise(n = n()),
          options = list(rowCallback = JS(
            'function(row, data) {
               if (data[1] == "Primary")
