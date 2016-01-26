@@ -68,7 +68,8 @@ shinyServer(function(input, output, session) {
     eventReactive({input$refresh; year1()}, 
                   gs_read(rv$SS, year1()) %>%
                     mutate(
-                      ClassMax = ifelse(is.na(ClassMax), room_cap()[Room], ClassMax),
+                      RoomMax = room_cap()[Room],
+                      GlobalMax = ifelse(is.na(GlobalMax), 45, GlobalMax),
                       MeetingDays = sub("TH", "R", MeetingDays),
                       Term = gsub("\\d", "", Term),
                       Term = gsub("/", "", Term)
@@ -91,7 +92,8 @@ shinyServer(function(input, output, session) {
     eventReactive({input$refresh; year2()}, 
                   gs_read(rv$SS, year2()) %>%
                     mutate(
-                      ClassMax = ifelse(is.na(ClassMax), room_cap()[Room], ClassMax),
+                      RoomMax = room_cap()[Room],
+                      GlobalMax = ifelse(is.na(GlobalMax), 45, GlobalMax),
                       MeetingDays = sub("TH", "R", MeetingDays),
                       Term = gsub("\\d", "", Term),
                       Term = gsub("/", "", Term)
@@ -183,7 +185,16 @@ shinyServer(function(input, output, session) {
         renderUI(
           selectInput(
             "year1", "Primary Schedule", 
-            choices = grep("^\\d\\d\\d\\d-\\d\\d", gs_ws_ls(rv$SS), value = TRUE)
+            choices = 
+              if (!is.null(query()[["admin"]]) && query()[["admin"]] == "rpruim") {
+                rev(
+                  grep("\\d\\d\\d\\d-\\d\\d", gs_ws_ls(rv$SS), value = TRUE)
+                ) 
+              }  else {
+                rev(
+                  grep("^\\d\\d\\d\\d-\\d\\d", gs_ws_ls(rv$SS), value = TRUE)
+                )
+              }
           )
         )
     }
@@ -197,16 +208,21 @@ shinyServer(function(input, output, session) {
           selectInput(
             "year2", "Secondary Schedule", 
             choices = 
-              ifelse(!is.null(query()[["admin"]]) && query()[["admin"]] == "rpruim",
-                     setdiff(
-                       grep("\\d\\d\\d\\d-\\d\\d", gs_ws_ls(rv$SS), value = TRUE),
-                       year1()
-                     ),
-                     setdiff(
-                       grep("^\\d\\d\\d\\d-\\d\\d", gs_ws_ls(rv$SS), value = TRUE),
-                       year1()
-                     )
-              )
+              if (!is.null(query()[["admin"]]) && query()[["admin"]] == "rpruim") {
+                rev( 
+                  setdiff(
+                    grep("\\d\\d\\d\\d-\\d\\d", gs_ws_ls(rv$SS), value = TRUE),
+                    year1()
+                  )
+                )
+              } else {
+                rev(
+                  setdiff(
+                    grep("^\\d\\d\\d\\d-\\d\\d", gs_ws_ls(rv$SS), value = TRUE),
+                    year1()
+                  )
+                )
+              }
           )
         )
     }
@@ -259,12 +275,12 @@ shinyServer(function(input, output, session) {
            Term == input$room_brush$panelvar2
          ) %>% 
            select(Term, SubjectCode, CourseNum, Section, MeetingDays, MeetingStart, MeetingEnd, 
-                  Room, ClassMax, Faculty, FacultyLoad) %>%
+                  Room, RoomMax, GlobalMax, Faculty, FacultyLoad) %>%
            unique()
        } else {
          the_sched() %>% 
            select(Term, SubjectCode, CourseNum, Section, MeetingDays, MeetingStart, MeetingEnd, 
-                  Room, ClassMax, Faculty, FacultyLoad) %>% 
+                  Room, RoomMax, GlobalMax, Faculty, FacultyLoad) %>% 
            filter(FALSE)
        }
        # brushedPoints(the_sched_by_day(), input$room_brush) 
@@ -277,9 +293,9 @@ shinyServer(function(input, output, session) {
          the_sched() %>% filter(FALSE)
        } else {
          the_sched() %>%
-           filter(Faculty == input$fac_click$panelvar1) %>% 
+           filter(Faculty == input$fac_click$panelvar1 & !is.na(SubjectCode)) %>% 
            select(Faculty, Term, SubjectCode, CourseNum, Section, MeetingDays, MeetingStart, MeetingEnd, 
-                  Room, ClassMax, FacultyLoad) 
+                  Room, RoomMax, GlobalMax, FacultyLoad) 
        }
      })
    
@@ -289,11 +305,11 @@ shinyServer(function(input, output, session) {
          "comp_columns", "include", 
          choices = 
            c("Term", "SubjectCode", "CourseNum", "MeetingDays", 
-                     "MeetingStart", "MeetingEnd", "Room", "ClassMax", "Faculty", 
+                     "MeetingStart", "MeetingEnd", "Room", "RoomMax", "GlobalMax", "Faculty", 
                      "FacultyLoad", "InstrMethod"),
           selected = 
            c("Term", "SubjectCode", "CourseNum", 
-             # "MeetingDays",  "MeetingStart", "MeetingEnd", "Room", "ClassMax", "Faculty", 
+             # "MeetingDays",  "MeetingStart", "MeetingEnd", "Room", "RoomMax", "GlobalMax", "Faculty", 
                "FacultyLoad", "InstrMethod")
        )                        
      })
@@ -314,9 +330,11 @@ shinyServer(function(input, output, session) {
                          select_(.dots = intersect(names(the_sched()), input$comp_columns))) %>% 
              mutate(Schedule = "Secondary") 
              ) %>%
-           select_(.dots = c("Schedule", intersect(names(the_sched()), input$comp_columns))) %>%
-           group_by_(.dots = names(.)) %>%
-           summarise(n = n()),
+           group_by_(.dots = 
+              c("Schedule", intersect(names(the_sched()), input$comp_columns))) %>%
+           summarise( n = n() ) %>%
+           select_(.dots = 
+              c("Schedule", intersect(names(the_sched()), input$comp_columns), "n")),
          options = list(rowCallback = JS(
            'function(row, data) {
               if (data[1] == "Primary")
