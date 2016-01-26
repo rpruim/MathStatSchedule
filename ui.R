@@ -20,7 +20,7 @@ shinyUI(
              textOutput("message")
       )
     ),
-    tabsetPanel(
+    tabsetPanel(selected = "Faculty Schedules",
       tabPanel(
         "Schedule", 
         downloadButton("downloadSchedule", "Download as CSV"), 
