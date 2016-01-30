@@ -7,7 +7,7 @@ library(ggplot2)
 library(lubridate)
 
 options(DT.options = 
-          list(pageLength = 25, pagemenu = c(25, 50, 100, 200), 
+          list(pageLength = 100, pagemenu = c(25, 50, 100, 200), 
                filter = list(position = 'top', clear = FALSE)
                )
         ) 
@@ -299,6 +299,24 @@ shinyServer(function(input, output, session) {
        }
      })
    
+   output$fac_details2 <-
+     renderDataTable({
+       if (is.null(input$loads_rows_selected)) {
+         the_sched() %>% 
+           select(Faculty, Term, SubjectCode, CourseNum, Section, FacultyLoad, InstrMethod) %>%
+           filter(FALSE)
+       } else {
+         rows <- as.integer(input$loads_rows_selected)
+         print(rows)
+         the_sched() %>%
+           filter(Faculty %in% fac_loads()[["Faculty"]][rows]) %>% 
+           # filter(Faculty %in% fac_loads()$Faculty[input$loads_rows_seleted] & !is.na(SubjectCode)) %>% 
+           select(Faculty, Term, SubjectCode, CourseNum, Section, FacultyLoad, InstrMethod) %>%
+           arrange(Faculty, Term, SubjectCode, CourseNum, Section)
+       }
+     })
+     
+   
    output$columnsUI <- 
      renderUI({
        checkboxGroupInput(
@@ -320,21 +338,32 @@ shinyServer(function(input, output, session) {
          filter = list(position = "top"),
          bind_rows(
            the_sched() %>% 
-             select_(.dots = intersect(names(the_sched()), input$comp_columns)) %>% 
-             anti_join(the_sched2() %>% 
-                         select_(.dots = intersect(names(the_sched2()), input$comp_columns))) %>% 
+             select_(.dots = c(intersect(names(the_sched()), input$comp_columns), "FacultyLoad")) %>% 
+             group_by_(.dots = intersect(names(the_sched()), input$comp_columns)) %>%
+             summarise(n = n(), load = sum(FacultyLoad, na.rm = TRUE)) %>%
+             ungroup() %>%
+             anti_join(
+               the_sched2() %>% 
+                 select_(.dots = c(intersect(names(the_sched2()), input$comp_columns), "FacultyLoad")) %>% 
+                 group_by_(.dots = intersect(names(the_sched2()), input$comp_columns)) %>%
+                 mutate(n = n(), load = sum(FacultyLoad, na.rm = TRUE)) 
+             ) %>%
              mutate(Schedule = "Primary"),
            the_sched2() %>% 
-             select_(.dots = intersect(names(the_sched2()), input$comp_columns)) %>% 
-             anti_join(the_sched() %>% 
-                         select_(.dots = intersect(names(the_sched()), input$comp_columns))) %>% 
-             mutate(Schedule = "Secondary") 
+             select_(.dots = c(intersect(names(the_sched2()), input$comp_columns), "FacultyLoad")) %>% 
+             group_by_(.dots = intersect(names(the_sched2()), input$comp_columns)) %>%
+             summarise(n = n(), load = sum(FacultyLoad, na.rm = TRUE)) %>%
+             ungroup() %>%
+             anti_join(
+               the_sched() %>% 
+                 select_(.dots = c(intersect(names(the_sched()), input$comp_columns), "FacultyLoad")) %>% 
+                 group_by_(.dots = intersect(names(the_sched()), input$comp_columns)) %>%
+                 mutate(n = n(), load = sum(FacultyLoad, na.rm = TRUE))
              ) %>%
-           group_by_(.dots = 
-              c("Schedule", intersect(names(the_sched()), input$comp_columns))) %>%
-           summarise( n = n() ) %>%
+             mutate(Schedule = "Secondary")
+             ) %>% # end bind_rows()
            select_(.dots = 
-              c("Schedule", intersect(names(the_sched()), input$comp_columns), "n")),
+              c("Schedule", intersect(names(the_sched()), input$comp_columns), "n", "load")),
          options = list(rowCallback = JS(
            'function(row, data) {
               if (data[1] == "Primary")
