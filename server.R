@@ -42,7 +42,11 @@ shinyServer(function(input, output, session) {
   the_message <-
     eventReactive( 
       {input$refresh; rv$SS},
-      paste("Last Modification of loaded spreadsheet: ", gs_gs(rv$SS)$updated)
+      if (input$refresh < 1) {
+        "No data displayed?  Try hitting the (Re)load button"
+      } else {
+        paste("Last Modification of loaded spreadsheet: ", gs_gs(rv$SS)$updated)
+      }
     )
   
   room_cap <-
