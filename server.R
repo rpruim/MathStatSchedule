@@ -5,12 +5,19 @@ library(dplyr)
 library(tidyr)
 library(ggplot2)
 library(lubridate)
+# library(readxl)
+
 
 options(DT.options = 
           list(pageLength = 100, pagemenu = c(25, 50, 100, 200), 
                filter = list(position = 'top', clear = FALSE)
                )
         ) 
+
+# # read data from Registrar's office for cross checking
+# F16 <- readxl::read_excel("16fa math.xlsx")
+# F16 <- F16[(1:nrow(F16)/2) * 2 - 1, ]
+
 
 shinyServer(function(input, output, session) {
   
@@ -100,7 +107,8 @@ shinyServer(function(input, output, session) {
                       GlobalMax = ifelse(is.na(GlobalMax), 45, GlobalMax),
                       MeetingDays = sub("TH", "R", MeetingDays),
                       Term = gsub("\\d", "", Term),
-                      Term = gsub("/", "", Term)
+                      Term = gsub("/", "", Term),
+                      CourseNum = as.character(CourseNum)
                     ) %>%
                     group_by(Term, SubjectCode, CourseNum) %>%
                     arrange(char2Time(MeetingStart)) %>%
