@@ -8,10 +8,12 @@ filler <- matrix("-", nrow = n, ncol = n,
 ##  - do this interactively
 ##  - do this EXACTLY ONCE
 
-# shiny_token <- gs_auth() # authenticate w/ your desired Google identity here
-# saveRDS(shiny_token, "shiny_token.rds")
-# ss <- gs_new("10_read-write-private-sheet",
-#              row_extent = n, col_extent = n, input = filler)
+if (FALSE) {
+  shiny_token <- gs_auth() # authenticate w/ your desired Google identity here
+  saveRDS(shiny_token, "shiny_token.rds")
+  ss <- gs_new("10_read-write-private-sheet",
+               row_extent = n, col_extent = n, input = filler)
+}
 
 ## if you version control your app, don't forget to ignore the token file!
 ## e.g., put it into .gitignore
@@ -20,7 +22,8 @@ googlesheets::gs_auth(token = "shiny_token.rds")
 ss <- googlesheets::gs_title("MathStatSchedules")
 
 char2Time <- function(x) { 
-  ymd("2015-02-02") + lubridate::hm(x)
+  res <- lubridate::ymd_hm(paste("2015-02-02", x))
+  as.POSIXct(res)
 }
 
 courseLevel <- function(x) {
