@@ -20,17 +20,20 @@ shinyUI(
                 a("this Google Sheet", href = ss$browser_url, target="_blank"), ".")
       )
     ),
-    tabsetPanel(selected = "Faculty Schedules",
+    tabsetPanel(
+      selected = "Faculty Schedules",
       tabPanel(
-        "Schedule", 
-        downloadButton("downloadSchedule", "Download as CSV"), 
-        dataTableOutput("schedule")
+        "Faculty Schedules", 
+        p("Click to see a listing of a faculty member's load."),
+        plotOutput("fac_plot", click = "fac_click"),
+        dataTableOutput("fac_details")
       ),
-      tabPanel( "Loads", 
+      tabPanel( 
+        "Loads", 
         fluidRow(
           column(4,
-          checkboxInput("by_term", "Separate by term", value = FALSE),
-          dataTableOutput("loads")
+                 checkboxInput("by_term", "Separate by term", value = FALSE),
+                 dataTableOutput("loads")
           ),
           p("Click on rows of the table to the left to show faculty schedule details here."),
           column(8, dataTableOutput("fac_details2"))
@@ -44,20 +47,18 @@ shinyUI(
         # verbatimTextOutput("stuff")
       ),
       tabPanel(
-        "Faculty Schedules", 
-        p("Click to see a listing of a faculty member's load."),
-        plotOutput("fac_plot", click = "fac_click"),
-        dataTableOutput("fac_details")
-      ),
-      tabPanel(
         "Compare Schedules", 
         fluidRow(
           column(3, uiOutput("year2UI")),
           column(3, uiOutput("columnsUI"))
         ),
         dataTableOutput("comparison_data")
+      ), 
+      tabPanel(
+        "Schedule", 
+        downloadButton("downloadSchedule", "Download as CSV"), 
+        dataTableOutput("schedule")
       )
     )
   )
-  
 )
