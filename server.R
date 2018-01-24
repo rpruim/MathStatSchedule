@@ -288,6 +288,8 @@ shinyServer(function(input, output, session) {
              ),
          alpha = 0.5
        ) +
+       geom_text(aes(x = Day, y = startTime + lubridate::minutes(20), label = CourseNum), 
+                 angle = 0, size = 1.5, color = "black") +
        facet_grid( Term ~ Room) +
        labs(y = "Time")
    })
@@ -305,6 +307,8 @@ shinyServer(function(input, output, session) {
          ),
          alpha = 0.5
        ) +
+       geom_text(aes(x = Day, y = startTime + lubridate::minutes(20), label = CourseNum), 
+                 angle = 0, size = 1.5, color = "black") +
        facet_grid(Term ~ Last) +
        labs(y = "Time")
    })
